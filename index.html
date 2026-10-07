@@ -27,7 +27,9 @@
     .layout {
         display: grid;
         grid-template-columns: 1fr 1fr;
+        grid-template-rows: 100vh; /* строка фиксирована: содержимое не растягивает сетку */
         height: 100vh;
+        overflow: hidden;
     }
 
     /* ===== Левая половина: текст песни ===== */
@@ -35,11 +37,16 @@
         position: relative;
         display: flex;
         flex-direction: column;
+        /* Жёсткая высота по экрану: длинный текст не растягивает колонку */
+        height: 100vh;
+        min-height: 0;
+        overflow: hidden;
         border-right: 2px solid #22222c;
     }
 
     .lyrics-viewport {
-        flex: 1;
+        flex: 1 1 0;
+        min-height: 0;
         overflow: hidden;
         position: relative;
     }
@@ -92,6 +99,7 @@
         font-size: 0.95rem;
         color: var(--muted);
         z-index: 5;
+        flex: 0 0 auto; /* панель всегда видна снизу, текст её не сдвигает */
     }
 
     .controls label { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
@@ -120,7 +128,9 @@
         gap: 2.5rem;
         padding: 3rem;
         background: var(--panel);
-        overflow: auto;
+        height: 100vh;
+        min-height: 0;
+        overflow-y: auto;
     }
 
     .qr-wrap img {
