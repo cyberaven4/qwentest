@@ -26,11 +26,37 @@
 
     .layout {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: var(--split, 50%) 6px 1fr; /* левая | разделитель | правая */
         grid-template-rows: 100vh; /* строка фиксирована: содержимое не растягивает сетку */
         height: 100vh;
         overflow: hidden;
     }
+
+    /* Перетаскиваемая граница между половинами */
+    .divider {
+        cursor: col-resize;
+        background: #22222c;
+        position: relative;
+        z-index: 6;
+        transition: background 0.15s;
+        touch-action: none;
+    }
+    .divider::after {           /* визуальная "ручка" по центру */
+        content: "";
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 2px; height: 48px;
+        background: var(--muted);
+        border-radius: 2px;
+    }
+    .divider:hover, .divider.dragging { background: var(--accent); }
+
+    body.resizing {
+        cursor: col-resize;
+        user-select: none;
+    }
+    body.resizing * { cursor: col-resize !important; }
 
     /* ===== Левая половина: текст песни ===== */
     .lyrics-pane {
@@ -41,7 +67,7 @@
         height: 100vh;
         min-height: 0;
         overflow: hidden;
-        border-right: 2px solid #22222c;
+        border-right: none;
     }
 
     .lyrics-viewport {
@@ -240,6 +266,9 @@
         </div>
     </section>
 
+    <!-- Перетаскиваемая граница между половинами -->
+    <div class="divider" id="divider" title="Перетащите, чтобы изменить ширину половинок"></div>
+
     <!-- ПРАВАЯ ПОЛОВИНА: певец -->
     <aside class="singer-pane">
         <div class="qr-wrap">
@@ -422,9 +451,60 @@
         for (const file of e.dataTransfer.files) routeDroppedFile(file);
     });
 
+    /* ---------- Перетаскивание границы между половинами ---------- */
+    const layout  = document.querySelector(".layout");
+    const divider = document.getElementById("divider");
+
+    let splitPct = 50; // ширина левой половины в %
+
+    function applySplit() {
+        layout.style.setProperty("--split", splitPct + "%");
+    }
+
+    function setSplitFromClientX(clientX) {
+        const rect = layout.getBoundingClientRect();
+        const minPct = 15, maxPct = 85; // обе половины всегда остаются usable
+        let pct = ((clientX - rect.left) / rect.width) * 100;
+        pct = Math.min(maxPct, Math.max(minPct, pct));
+        splitPct = pct;
+        applySplit();
+    }
+
+    let dragging = false;
+
+    divider.addEventListener("pointerdown", (e) => {
+        dragging = true;
+        divider.classList.add("dragging");
+        document.body.classList.add("resizing");
+        divider.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    });
+
+    divider.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        setSplitFromClientX(e.clientX);
+    });
+
+    function endDrag(e) {
+        if (!dragging) return;
+        dragging = false;
+        divider.classList.remove("dragging");
+        document.body.classList.remove("resizing");
+        try { divider.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+    divider.addEventListener("pointerup", endDrag);
+    divider.addEventListener("pointercancel", endDrag);
+
+    // Двойной клик по границе — вернуть 50/50
+    divider.addEventListener("dblclick", () => {
+        splitPct = 50;
+        applySplit();
+    });
+
     /* ---------- Пуск ---------- */
     speedVal.textContent = speedInput.value;
     fontVal.textContent  = fontInput.value + "rem";
+    applySplit();
     rafId = requestAnimationFrame(tick);
 })();
 </script>
