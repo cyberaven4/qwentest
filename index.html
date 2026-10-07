@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Караоке — Текст песни</title>
+<style>
+    :root {
+        --bg: #0d0d12;
+        --panel: #15151c;
+        --text: #f2f2f5;
+        --muted: #9a9aa5;
+        --accent: #e94560;
+        --lyrics-size: 3rem;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+        height: 100%;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        height: 100vh;
+    }
+
+    /* ===== Левая половина: текст песни ===== */
+    .lyrics-pane {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        border-right: 2px solid #22222c;
+    }
+
+    .lyrics-viewport {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .lyrics-scroll {
+        will-change: transform;
+        padding: 0 4vw;
+        text-align: center;
+    }
+
+    .lyrics-scroll p {
+        font-size: var(--lyrics-size);
+        line-height: 1.7;
+        margin: 0.6em 0;
+        white-space: pre-wrap;
+    }
+
+    .lyrics-scroll .gap-top,
+    .lyrics-scroll .gap-bottom {
+        height: 45vh;
+    }
+
+    /* Маскировка краёв, чтобы строки плавно появлялись/исчезали */
+    .lyrics-viewport::before,
+    .lyrics-viewport::after {
+        content: "";
+        position: absolute;
+        left: 0; right: 0;
+        height: 18vh;
+        z-index: 2;
+        pointer-events: none;
+    }
+    .lyrics-viewport::before {
+        top: 0;
+        background: linear-gradient(to bottom, var(--bg), transparent);
+    }
+    .lyrics-viewport::after {
+        bottom: 0;
+        background: linear-gradient(to top, var(--bg), transparent);
+    }
+
+    /* Панель настроек прокрутки (внизу левой половины) */
+    .controls {
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+        padding: 0.8rem 1.5rem;
+        background: var(--panel);
+        border-top: 1px solid #22222c;
+        font-size: 0.95rem;
+        color: var(--muted);
+        z-index: 5;
+    }
+
+    .controls label { display: flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+
+    .controls input[type="range"] { width: 130px; accent-color: var(--accent); cursor: pointer; }
+
+    .controls button {
+        background: #22222e;
+        color: var(--text);
+        border: 1px solid #33334a;
+        border-radius: 6px;
+        padding: 0.45rem 0.9rem;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .controls button:hover { background: #2e2e40; }
+    .controls .value { min-width: 3.5em; text-align: left; color: var(--text); }
+
+    /* ===== Правая половина: информация о певце ===== */
+    .singer-pane {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2.5rem;
+        padding: 3rem;
+        background: var(--panel);
+        overflow: auto;
+    }
+
+    .qr-wrap img {
+        max-width: 45vh;
+        max-height: 45vh;
+        width: auto;
+        height: auto;
+        border-radius: 12px;
+        background: #fff;
+        padding: 10px;
+        box-shadow: 0 0 40px rgba(233, 69, 96, 0.25);
+    }
+
+    .singer-info {
+        font-size: 1.6rem;
+        line-height: 1.7;
+        text-align: center;
+        white-space: pre-wrap;
+        max-width: 90%;
+    }
+
+    .placeholder {
+        color: var(--muted);
+        font-size: 1.2rem;
+        text-align: center;
+        border: 2px dashed #33334a;
+        border-radius: 12px;
+        padding: 2rem 3rem;
+    }
+
+    /* Верхняя панель загрузки файлов */
+    .topbar {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        display: flex;
+        gap: 0.8rem;
+        align-items: center;
+        padding: 0.5rem 1rem;
+        background: rgba(13, 13, 18, 0.85);
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid #22222c;
+        z-index: 10;
+        opacity: 0.15;
+        transition: opacity 0.25s;
+    }
+    .topbar:hover { opacity: 1; }
+
+    .topbar .load-btn {
+        background: #22222e;
+        color: var(--text);
+        border: 1px solid #33334a;
+        border-radius: 6px;
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+        cursor: pointer;
+    }
+    .topbar .load-btn:hover { background: #2e2e40; }
+    .topbar .fname { font-size: 0.8rem; color: var(--muted); max-width: 18vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Панель оператора: загрузка файлов на лету -->
+<div class="topbar">
+    <button class="load-btn" id="btnSong">🎵 Текст песни</button>
+    <span class="fname" id="nameSong">не загружен</span>
+
+    <button class="load-btn" id="btnInfo">👤 О певце (txt)</button>
+    <span class="fname" id="nameInfo">не загружен</span>
+
+    <button class="load-btn" id="btnQr">🖼 QR-код (картинка)</button>
+    <span class="fname" id="nameQr">не загружен</span>
+
+    <input type="file" id="fileSong" accept=".txt,text/plain">
+    <input type="file" id="fileInfo" accept=".txt,text/plain">
+    <input type="file" id="fileQr" accept="image/*">
+</div>
+
+<div class="layout">
+    <!-- ЛЕВАЯ ПОЛОВИНА: бегущий текст песни -->
+    <section class="lyrics-pane">
+        <div class="lyrics-viewport" id="viewport">
+            <div class="lyrics-scroll" id="scroll">
+                <div class="gap-top"></div>
+                <p class="placeholder" style="margin-top:2rem">Загрузите файл текста песни<br>(кнопка «Текст песни» сверху слева)</p>
+                <div class="gap-bottom"></div>
+            </div>
+        </div>
+
+        <!-- Настройки прокрутки прямо в этой половине -->
+        <div class="controls">
+            <button id="btnPlay">⏸ Пауза</button>
+
+            <label>Скорость
+                <input type="range" id="speed" min="1" max="100" value="30">
+                <span class="value" id="speedVal">30</span>
+            </label>
+
+            <label>Размер шрифта
+                <input type="range" id="fontSize" min="1.5" max="6" step="0.25" value="3">
+                <span class="value" id="fontVal">3rem</span>
+            </label>
+
+            <button id="btnRestart">⟲ В начало</button>
+        </div>
+    </section>
+
+    <!-- ПРАВАЯ ПОЛОВИНА: певец -->
+    <aside class="singer-pane">
+        <div class="qr-wrap">
+            <img id="qrImg" alt="QR-код певца" style="display:none">
+            <div class="placeholder" id="qrPlaceholder">QR-код не загружен<br>(кнопка «QR-код» сверху)</div>
+        </div>
+        <div class="singer-info placeholder" id="singerInfo">Информация о певце не загружена<br>(кнопка «О певце» сверху)</div>
+    </aside>
+</div>
+
+<script>
+(function () {
+    "use strict";
+
+    /* ---------- Элементы ---------- */
+    const viewport   = document.getElementById("viewport");
+    const scroll     = document.getElementById("scroll");
+
+    const fileSong   = document.getElementById("fileSong");
+    const fileInfo   = document.getElementById("fileInfo");
+    const fileQr     = document.getElementById("fileQr");
+
+    const btnSong    = document.getElementById("btnSong");
+    const btnInfo    = document.getElementById("btnInfo");
+    const btnQr      = document.getElementById("btnQr");
+
+    const nameSong   = document.getElementById("nameSong");
+    const nameInfo   = document.getElementById("nameInfo");
+    const nameQr     = document.getElementById("nameQr");
+
+    const qrImg         = document.getElementById("qrImg");
+    const qrPlaceholder = document.getElementById("qrPlaceholder");
+    const singerInfo    = document.getElementById("singerInfo");
+
+    const btnPlay     = document.getElementById("btnPlay");
+    const btnRestart  = document.getElementById("btnRestart");
+    const speedInput  = document.getElementById("speed");
+    const speedVal    = document.getElementById("speedVal");
+    const fontInput   = document.getElementById("fontSize");
+    const fontVal     = document.getElementById("fontVal");
+
+    /* ---------- Состояние прокрутки ---------- */
+    let offset   = 0;          // текущее смещение в пикселях
+    let playing  = true;       // идёт ли прокрутка
+    let rafId    = null;
+    let lastTime = null;
+
+    // Скорость: значение слайдера 1..100 => пикселей в секунду
+    function pxPerSecond() {
+        return Number(speedInput.value) * 1.5; // 1.5 .. 150 px/сек
+    }
+
+    /* ---------- Цикл анимации (плавный автоскролл) ---------- */
+    function tick(ts) {
+        if (lastTime === null) lastTime = ts;
+        const dt = (ts - lastTime) / 1000;
+        lastTime = ts;
+
+        if (playing) {
+            offset += pxPerSecond() * dt;
+
+            // Когда текст полностью прошёл — останавливаемся (без зацикливания)
+            const maxOffset = Math.max(0, scroll.scrollHeight - viewport.clientHeight);
+            if (offset >= maxOffset) {
+                offset = maxOffset;
+                setPlaying(false);
+            }
+            applyTransform();
+        }
+        rafId = requestAnimationFrame(tick);
+    }
+
+    function applyTransform() {
+        scroll.style.transform = "translateY(" + (-offset) + "px)";
+    }
+
+    function setPlaying(state) {
+        playing = state;
+        btnPlay.textContent = playing ? "⏸ Пауза" : "▶ Продолжить";
+    }
+
+    /* ---------- Загрузка текста песни ---------- */
+    function loadSongText(file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            const raw = String(e.target.result).replace(/\r/g, "");
+            const lines = raw.split("\n");
+
+            // Строим разметку: пустая строка => увеличенный отступ
+            let html = '<div class="gap-top"></div>';
+            for (const line of lines) {
+                const t = line.trimEnd();
+                if (t === "") {
+                    html += '<p style="height:1.2em"></p>';
+                } else {
+                    html += "<p>" + escapeHtml(t) + "</p>";
+                }
+            }
+            html += '<div class="gap-bottom"></div>';
+            scroll.innerHTML = html;
+
+            // Старт прокрутки с нуля
+            offset = 0;
+            applyTransform();
+            setPlaying(true);
+
+            nameSong.textContent = file.name;
+        };
+        reader.readAsText(file, "UTF-8");
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    /* ---------- Загрузка информации о певце ---------- */
+    function loadSingerInfo(file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            singerInfo.textContent = String(e.target.result).replace(/\r/g, "");
+            singerInfo.classList.remove("placeholder");
+            nameInfo.textContent = file.name;
+        };
+        reader.readAsText(file, "UTF-8");
+    }
+
+    /* ---------- Загрузка QR-картинки ---------- */
+    function loadQr(file) {
+        const url = URL.createObjectURL(file);
+        qrImg.src = url;
+        qrImg.style.display = "block";
+        qrPlaceholder.style.display = "none";
+        nameQr.textContent = file.name;
+    }
+
+    /* ---------- Привязка кнопок и скрытых file-input ---------- */
+    btnSong.addEventListener("click", () => fileSong.click());
+    btnInfo.addEventListener("click", () => fileInfo.click());
+    btnQr.addEventListener("click",  () => fileQr.click());
+
+    fileSong.addEventListener("change", e => { if (e.target.files[0]) loadSongText(e.target.files[0]); });
+    fileInfo.addEventListener("change", e => { if (e.target.files[0]) loadSingerInfo(e.target.files[0]); });
+    fileQr.addEventListener("change",   e => { if (e.target.files[0]) loadQr(e.target.files[0]); });
+
+    /* ---------- Управление прокруткой ---------- */
+    btnPlay.addEventListener("click", () => setPlaying(!playing));
+
+    btnRestart.addEventListener("click", () => {
+        offset = 0;
+        applyTransform();
+        setPlaying(true);
+    });
+
+    speedInput.addEventListener("input", () => {
+        speedVal.textContent = speedInput.value;
+    });
+
+    fontInput.addEventListener("input", () => {
+        document.documentElement.style.setProperty("--lyrics-size", fontInput.value + "rem");
+        fontVal.textContent = fontInput.value + "rem";
+    });
+
+    /* ---------- Горячие клавиши для оператора ---------- */
+    document.addEventListener("keydown", (e) => {
+        if (e.code === "Space") { e.preventDefault(); setPlaying(!playing); }
+        if (e.code === "KeyR")  { offset = 0; applyTransform(); setPlaying(true); }
+    });
+
+    /* ---------- Drag & drop файлов на страницу ---------- */
+    function routeDroppedFile(file) {
+        const isImage = file.type.startsWith("image/");
+        const isTxt   = /\.txt$/i.test(file.name) || file.type === "text/plain";
+        if (isImage)        loadQr(file);
+        else if (isTxt)     loadSongText(file); // текст песни по умолчанию; txt о певце — через кнопку
+    }
+
+    document.addEventListener("dragover", (e) => { e.preventDefault(); });
+    document.addEventListener("drop", (e) => {
+        e.preventDefault();
+        for (const file of e.dataTransfer.files) routeDroppedFile(file);
+    });
+
+    /* ---------- Пуск ---------- */
+    speedVal.textContent = speedInput.value;
+    fontVal.textContent  = fontInput.value + "rem";
+    rafId = requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
